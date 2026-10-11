@@ -62,7 +62,7 @@ EmDash is an Astro-native CMS that deploys to Cloudflare Workers or Node.js. The
 - **Schema in the database.** `_emdash_collections` and `_emdash_fields` are the source of truth. Each collection gets a real SQL table (`ec_posts`, `ec_products`) with typed columns -- not EAV.
 - **Middleware chain:** runtime init -> setup check -> auth -> request context (ALS). Auth middleware checks authentication only; routes check authorization.
 - **Handler layer** (`packages/core/src/api/handlers/*.ts`) holds business logic and returns `ApiResult<T>` (`{ success: true, data } | { success: false, error: { code, message, details? } }`). Route files are thin wrappers.
-- **Storage abstraction:** `Storage` interface with `upload/download/delete/exists/list/getSignedUploadUrl/getPublicUrl`. `LocalStorage` for a local directory, `S3Storage` for S3-compatible services (including R2's S3 API), `R2Storage` (in `@emdash-cms/cloudflare`) for R2 bindings. Access via `emdash.storage` from locals.
+- **Storage abstraction:** `Storage` interface with `upload/download/delete/exists/list/getSignedUploadUrl/getPublicUrl`. `LocalStorage` for a local directory, `S3Storage` for S3-compatible services (including R2's S3 API), `R2Storage` (in `@emdash-cms/cloudflare`) for R2 bindings, `VercelBlobStorage` (in `@emdash-cms/vercel`) for Vercel Blob. Access via `emdash.storage` from locals.
 
 Key files:
 

@@ -97,6 +97,12 @@ storage: s3({
 	region: "us-east-1", // optional, default: "auto"
 	publicUrl: "https://cdn.example.com", // optional
 });
+
+// Vercel Blob (import from @emdash-cms/vercel)
+storage: vercelBlob({
+	access: "private", // must match the Blob store
+	tokenEnvVar: "MEDIA_BLOB_TOKEN", // optional, name of the token variable
+});
 ```
 
 See [Storage Options](/deployment/storage/) for details.
