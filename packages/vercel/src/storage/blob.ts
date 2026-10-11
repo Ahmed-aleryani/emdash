@@ -263,10 +263,15 @@ export class VercelBlobStorage implements Storage {
 			}
 
 			// Without Content-Length (a chunked response) the SDK reports size 0.
-			const size =
-				result.headers.get("content-length") === null
-					? (await head(key, this.auth)).size
-					: result.blob.size;
+			let size = result.blob.size;
+			if (result.headers.get("content-length") === null) {
+				try {
+					size = (await head(key, this.auth)).size;
+				} catch (error) {
+					await result.stream.cancel();
+					throw error;
+				}
+			}
 
 			return { body: result.stream, contentType, size, lastModified };
 		} catch (error) {

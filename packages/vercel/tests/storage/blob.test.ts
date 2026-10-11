@@ -26,7 +26,15 @@ const blob = vi.hoisted(() => {
 	}
 	const store = new Map<string, Stored>();
 	const cdn = new Map<string, Stored>();
-	const behaviour = { chunked: false, rangeFails: false, failAll: false, badContentRange: false };
+	const behaviour = {
+		chunked: false,
+		rangeFails: false,
+		failAll: false,
+		badContentRange: false,
+		headFails: false,
+		minifiedNotFound: false,
+	};
+	const cancelled: string[] = [];
 	const RANGE = /^bytes=(\d*)-(\d*)$/;
 	const STORE_TOKEN = "fake-store-token";
 
@@ -47,6 +55,7 @@ const blob = vi.hoisted(() => {
 		STORE_TOKEN,
 		store,
 		behaviour,
+		cancelled,
 		reset() {
 			store.clear();
 			cdn.clear();
@@ -55,7 +64,10 @@ const blob = vi.hoisted(() => {
 				rangeFails: false,
 				failAll: false,
 				badContentRange: false,
+				headFails: false,
+				minifiedNotFound: false,
 			});
+			cancelled.length = 0;
 		},
 		module: {
 			BlobNotFoundError,
@@ -120,15 +132,30 @@ const blob = vi.hoisted(() => {
 				}
 				return {
 					statusCode: 200,
-					stream: new Blob([bytes]).stream(),
+					stream: new ReadableStream<Uint8Array>({
+						start(controller) {
+							controller.enqueue(bytes);
+							controller.close();
+						},
+						cancel() {
+							cancelled.push(key);
+						},
+					}),
 					headers,
 					blob: { contentType: object.contentType, size: behaviour.chunked ? 0 : length },
 				};
 			},
 			async head(pathname: string, options: Record<string, unknown> = {}) {
 				check(options);
+				if (behaviour.headFails) throw new Error("Blob service unavailable");
 				const object = store.get(pathname);
-				if (!object) throw new BlobNotFoundError("The requested blob does not exist");
+				if (!object) {
+					// A minifier can rename the class, leaving only instanceof to recognise it.
+					class e extends BlobNotFoundError {}
+					throw behaviour.minifiedNotFound
+						? new e("The requested blob does not exist")
+						: new BlobNotFoundError("The requested blob does not exist");
+				}
 				return { pathname, size: object.bytes.byteLength, uploadedAt: object.uploadedAt };
 			},
 			async del(pathname: string, options: Record<string, unknown> = {}) {
@@ -391,6 +418,25 @@ describe("VercelBlobStorage", () => {
 		blob.behaviour.chunked = true;
 
 		expect((await privateStorage().download("big.bin")).size).toBe(4096);
+	});
+
+	it("recognises a not-found error whose class name was minified", async () => {
+		blob.behaviour.minifiedNotFound = true;
+		expect(await privateStorage().exists("missing.png")).toBe(false);
+	});
+
+	it("releases the download stream when the size lookup fails", async () => {
+		await privateStorage().upload({
+			key: "big.bin",
+			body: new Uint8Array(64),
+			contentType: "application/octet-stream",
+		});
+		blob.behaviour.chunked = true;
+		blob.behaviour.headFails = true;
+		await expect(privateStorage().download("big.bin")).rejects.toMatchObject({
+			code: "DOWNLOAD_FAILED",
+		});
+		expect(blob.cancelled).toEqual(["big.bin"]);
 	});
 
 	it("maps missing files to NOT_FOUND", async () => {
