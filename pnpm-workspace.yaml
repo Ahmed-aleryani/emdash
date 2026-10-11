@@ -39,6 +39,9 @@ trustPolicyExclude:
   - "semver@6.3.1" # provenance -> none (old pinned util via @babel/core)
   - "@portabletext/toolkit@3.0.3" # provenance -> none (old pinned release)
   - "reselect@5.1.1" # provenance -> none (old pinned util)
+  - "@vercel/oidc@3.8.10" # same trusted-publisher OIDC config as 3.8.9; only the config id format changed (via @vercel/blob)
+  - "@vercel/cli-exec@1.0.1" # provenance -> none, still a GitHub Actions trusted publisher (exact pin of @vercel/oidc, via @vercel/blob)
+  - "@vercel/cli-config@0.3.1" # same trusted-publisher OIDC config as 0.3.0; only the config id format changed (via @vercel/oidc)
 
 overrides:
   "@vitest/runner": 4.1.10

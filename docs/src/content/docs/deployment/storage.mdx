@@ -1,6 +1,6 @@
 ---
 title: Choose media storage
-description: Choose and configure R2, S3-compatible, or local media storage for EmDash.
+description: Choose and configure R2, S3-compatible, Vercel Blob, or local media storage for EmDash.
 ---
 
 import { Aside, Tabs, TabItem } from "@astrojs/starlight/components";
@@ -13,6 +13,7 @@ Choose one storage adapter for uploaded media. A database backup contains media 
 | -------------- | ------------------------------------------------------------- | -------------- |
 | **R2 binding** | The site runs on Cloudflare Workers                            | No             |
 | **S3**         | A Node.js site uses AWS S3, R2's S3 API, MinIO, or compatible storage | Yes      |
+| **Vercel Blob** | The site runs on Vercel and stores media in a Vercel Blob store | No             |
 | **Local**      | A Node.js site has one writable persistent volume              | No             |
 
 ## Cloudflare R2 binding
@@ -189,6 +190,89 @@ Keep the real values in the Node.js hosting platform's secret manager. The publi
 
 Point the same runtime variables at MinIO. Set `S3_ENDPOINT` to the MinIO API origin, `S3_BUCKET` to the bucket name, and the two credential variables to a scoped MinIO access key. Set `S3_PUBLIC_URL` only when that origin serves the bucket's objects publicly.
 
+## Vercel Blob
+
+Use the Vercel Blob adapter when the site stores media in a [Vercel Blob](https://vercel.com/docs/vercel-blob) store. Vercel Blob has no S3-compatible API, so the `s3()` adapter cannot connect to it. Install the adapter package in your project:
+
+```sh
+pnpm add @emdash-cms/vercel
+```
+
+The following configuration uses a private Blob store that is connected to the Vercel project:
+
+```js title="astro.config.mjs"
+import emdash from "emdash/astro";
+import { vercelBlob } from "@emdash-cms/vercel";
+
+export default defineConfig({
+	integrations: [
+		emdash({
+			storage: vercelBlob({ access: "private" }),
+		}),
+	],
+});
+```
+
+### Configuration
+
+| Option        | Type     | Required | Description                                                                                                  |
+| ------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `access`      | `string` | yes      | `"private"` or `"public"`. Must match the access mode of the Blob store                                      |
+| `publicUrl`   | `string` | no       | `http` or `https` URL prefix for media, such as the store's public origin or a CDN. Only valid with `access: "public"` |
+| `tokenEnvVar` | `string` | no       | Name of the environment variable that holds a Blob read-write token                                          |
+| `storeId`     | `string` | no       | Blob store ID for OIDC authentication when `BLOB_STORE_ID` is not set                                        |
+
+An invalid `access` or `publicUrl` value fails with the `INVALID_BLOB_CONFIG` error code when EmDash creates the storage adapter.
+
+### Credentials
+
+The adapter reads credentials from `process.env` at runtime. The `vercelBlob()` configuration never contains a token, so credentials stay out of the build output.
+
+On Vercel, connect the Blob store to the project. Vercel then sets `BLOB_READ_WRITE_TOKEN` for the project. Without `tokenEnvVar`, the adapter authenticates in the following order:
+
+1. The deployment's OpenID Connect (OIDC) token, `VERCEL_OIDC_TOKEN`, when a store ID is set in `BLOB_STORE_ID` or the `storeId` option.
+2. The read-write token in `BLOB_READ_WRITE_TOKEN`.
+
+On a host other than Vercel, create a read-write token for the store and keep it in the host's secret manager. Set it as `BLOB_READ_WRITE_TOKEN`, or store it under another name and pass that name as `tokenEnvVar`. The following configuration reads the token from `MEDIA_BLOB_TOKEN`:
+
+```js
+storage: vercelBlob({
+	access: "private",
+	tokenEnvVar: "MEDIA_BLOB_TOKEN",
+});
+```
+
+When `tokenEnvVar` is set, the adapter uses only that variable. If the variable is missing or empty at runtime, the adapter fails with the `MISSING_BLOB_CONFIG` error code.
+
+### Private or public store
+
+Vercel sets the access mode of a Blob store when the store is created, and `access` must match it.
+
+A private store serves every file through EmDash's media route, `/_emdash/api/media/file/`. Use a private store unless media must be served directly from the Blob CDN.
+
+A public store serves files directly when `publicUrl` is set. Set it to the store's origin, `https://<store-id>.public.blob.vercel-storage.com`, or to a CDN in front of it. Without `publicUrl`, EmDash serves files from a public store through its media route as well.
+
+```js
+storage: vercelBlob({
+	access: "public",
+	publicUrl: "https://<store-id>.public.blob.vercel-storage.com",
+});
+```
+
+If the same store holds automatic JSON backups, a public store can expose objects under `backups/` to anyone who has their URL. Use a private store and EmDash's media route for sites that keep automatic backups in storage. See [Backups](/guides/backups/).
+
+### Caching
+
+Vercel Blob stores a cache lifetime with each object and sends it to browsers and the Blob CDN as `max-age`. The minimum is 60 seconds. The adapter converts the `Cache-Control` value that EmDash sends with an upload: `no-store`, `no-cache`, and a `max-age` below 60 seconds become 60 seconds. An upload without a `max-age` keeps the Blob default of one month.
+
+When an editor replaces a media file, EmDash writes the new file under the same key. A private store reads the new file at once. A public store reads through the Blob CDN, which can serve the previous file for up to 60 seconds. Browsers that loaded the original file directly from a public `publicUrl` can keep it for its full cache lifetime, up to one month by default.
+
+<Aside type="note">
+	The Vercel Blob adapter does not support signed upload URLs. The admin uploads files through
+	the server, so the [request body size limit of Vercel Functions](https://vercel.com/docs/functions/limitations)
+	applies to uploads on Vercel.
+</Aside>
+
 ## Local filesystem
 
 Use local storage for development or a single Node.js server with a persistent disk. Files are stored in a directory on that disk.
@@ -255,6 +339,7 @@ Adapters that support signed uploads:
 Adapters that do not support signed uploads:
 
 - **R2 binding** (use S3 adapter with R2 credentials instead)
+- **Vercel Blob**
 - **Local**
 
 ## Storage interface
@@ -267,6 +352,7 @@ interface Storage {
 		key: string;
 		body: Buffer | Uint8Array | ReadableStream;
 		contentType: string;
+		cacheControl?: string;
 	}): Promise<UploadResult>;
 
 	download(key: string, options?: DownloadOptions): Promise<DownloadResult>;
@@ -286,4 +372,4 @@ The media route, `/_emdash/api/media/file/`, answers HTTP `Range` requests. Safa
 
 An adapter that supports ranges returns the part of the requested range that lies within the file and sets `range: { offset, length }` on the result to describe it. `size` is always the size of the whole file. When an adapter can't serve a range, including one that starts past the end of the file, it returns the whole file without `range`. The route then responds with the whole file, or with `416 Range Not Satisfiable` if the range starts past the end.
 
-The R2, S3, and local adapters support ranges. Range support is optional for a custom adapter: when it ignores `options`, range requests receive the whole file, or `416` if the range starts past the end.
+The R2, S3, Vercel Blob, and local adapters support ranges. Range support is optional for a custom adapter: when it ignores `options`, range requests receive the whole file, or `416` if the range starts past the end.

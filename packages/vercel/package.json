@@ -1,0 +1,56 @@
+{
+	"name": "@emdash-cms/vercel",
+	"version": "0.0.0",
+	"description": "Vercel adapters for EmDash - Vercel Blob media storage",
+	"type": "module",
+	"main": "dist/index.mjs",
+	"files": [
+		"dist",
+		"src"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
+		},
+		"./storage/blob": {
+			"types": "./dist/storage/blob.d.mts",
+			"default": "./dist/storage/blob.mjs"
+		}
+	},
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"test": "vitest run",
+		"prepublishOnly": "node --run build",
+		"check": "publint && attw --pack --ignore-rules=cjs-resolves-to-esm --ignore-rules=no-resolution",
+		"typecheck": "tsgo --noEmit"
+	},
+	"dependencies": {
+		"@vercel/blob": "^2.8.0",
+		"emdash": "workspace:*"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "catalog:",
+		"@types/node": "catalog:",
+		"publint": "catalog:",
+		"tsdown": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/emdash-cms/emdash.git",
+		"directory": "packages/vercel"
+	},
+	"homepage": "https://github.com/emdash-cms/emdash",
+	"keywords": [
+		"emdash",
+		"vercel",
+		"vercel-blob",
+		"storage",
+		"media"
+	],
+	"author": "Ahmed Aleryani",
+	"license": "MIT"
+}
